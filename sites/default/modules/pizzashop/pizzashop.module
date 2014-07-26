@@ -1,0 +1,140 @@
+<?php
+
+function pizzashop_services_resources()
+{
+    return array(
+        'pizzashop' => array(
+            'actions' => array(
+                'order' => array(
+                    'help' => 'Places a pizza order',
+                    'callback' => 'pizzashop_place_order',
+                    'access callback' => 'pizzashop_check_access',
+                    'args' => array(
+                        array(
+                            'name' => 'pizzas',
+                            'optional' => FALSE,
+                            'source' => 'data',
+                        ),
+                        array(
+                            'name' => 'customer_name',
+                            'optional' => FALSE,
+                            'source' => 'data',
+                        ),
+                        array(
+                            'name' => 'customer_phone',
+                            'optional' => FALSE,
+                            'source' => 'data',
+                        ),
+                        array(
+                            'name' => 'customer_email',
+                            'optional' => FALSE,
+                            'source' => 'data',
+                        ),
+                        array(
+                            'name' => 'payment_method',
+                            'optional' => FALSE,
+                            'source' => 'data',
+                        ),
+                    ),
+                ),
+                'create' => array(
+                    'help' => 'Adds a new pizza',
+                    'callback' => 'pizzashop_create_pizza',
+                    'access callback' => 'pizzashop_check_access',
+                    'args' => array(
+                        array(
+                            'name' => 'name',
+                            'optional' => FALSE,
+                            'source' => 'data',
+                        ),
+                        array(
+                            'name' => 'toppings',
+                            'optional' => FALSE,
+                            'source' => 'data',
+                        ),
+                        array(
+                            'name' => 'style',
+                            'optional' => FALSE,
+                            'source' => 'data',
+                        ),
+                    ),
+                ),
+            )
+        )
+    );
+}
+
+function pizzashop_check_access()
+{
+    return TRUE;
+}
+
+function pizzashop_place_order($data)
+{
+    $pizza_nodes = node_load_multiple($data['pizzas']);
+
+    drupal_mail('pizzashop', 'pizza_order', 'noah@koremedia.net', LANGUAGE_NONE, array('data' => $data, 'pizzas' => $pizza_nodes));
+    if ($data['customer_email']) {
+        drupal_mail('pizzashop', 'customer_confirmation', $data['customer_email'], LANGUAGE_NONE, array('data' => $data, 'pizzas' => $pizza_nodes));
+    }
+
+    watchdog('pizzashop', 'Place order called: !dump', array('!dump' => print_r($data, TRUE)));
+}
+
+function pizzashop_create_pizza($data)
+{
+    $name = $data['name'];
+    $style = $data['style'];
+    $toppings = $data['toppings'];
+
+    $node = new stdClass();
+    $node->type = 'pizza';
+    $node->title = $name;
+    $node->language = LANGUAGE_NONE;
+    $node->field_pizza_style[LANGUAGE_NONE][0]['tid'] = $style;
+    $node->field_toppings[LANGUAGE_NONE] = array();
+    foreach ($toppings as $t) {
+        $node->field_toppings[LANGUAGE_NONE][] = array('tid' => $t);
+    }
+    $node->status = 0; // do not publish by default
+
+    node_save($node);
+
+    drupal_mail('pizzashop', 'pizza_created', 'noah@koremedia.net', LANGUAGE_NONE, array('node' => $node));
+    watchdog('pizzashop', 'Create pizza called: !dump', array('!dump' => print_r($data, TRUE)));
+}
+
+function pizzashop_mail($key, &$message, $params)
+{
+    switch ($key) {
+        case 'pizza_order':
+            $message['subject'] = t('New Pizza Order from Guido\'s Pizza Shop');
+            $message['body'] = array(
+                'A new pizza was ordered at ' . date('l, F j, Y g:i a'),
+                'Customer name: ' . $params['data']['customer_name'],
+                'Customer phone: ' . $params['data']['customer_phone'],
+                'Customer email: ' . $params['data']['customer_email'],
+                'Payment method: ' . $params['data']['payment_method'],
+                '',
+                'Pizza(s) ordered: ',
+            );
+            foreach ($params['pizzas'] as $pizza) {
+                $message['body'][] = '- ' . $pizza->title;
+            }
+            break;
+        case 'customer_confirmation':
+            $message['subject'] = t('Thanks for your pizza order!');
+            $message['body'] = array(
+                'Thank you for placing your order!  Your pizza will arrive shortly.'
+            );
+            break;
+        case 'pizza_created':
+            $message['subject'] = t('New Pizza Created via Web Service');
+            $message['body'] = array(
+                'A new pizza was created at ' . date('l, F j, Y g:i a'),
+                'Name: ' . $params['node']->title,
+                'Link to edit/publish: ' . url('node/' . $params['node']->nid . '/edit'),
+            );
+            break;
+    }
+}

@@ -1,0 +1,5 @@
+name = Pizza Shop
+description = Guido's Pizza Shop extensions
+core = 7.x
+package = Pizza
+dependencies[] = services
